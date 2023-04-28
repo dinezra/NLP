@@ -11,6 +11,6 @@ LM.build_model(text)
 
 SP.add_language_model(LM)
 SP.add_error_tables(error_tables)
-print(SP.spell_check('happy smeli',
+print(SP.spell_check('din',
                      alpha=0.95))
 

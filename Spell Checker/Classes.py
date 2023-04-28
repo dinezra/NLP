@@ -310,7 +310,7 @@ class Spell_Checker:
             ngram_dict = Counter(ngrams)
             return ngram_dict
 
-
+        #
 
         def build_model(self, text, minus_n_dict=False):  # should be called build_model
             """populates the instance variable model_dict.
@@ -328,7 +328,7 @@ class Spell_Checker:
             self.chars = True
             self.spell_dict_char =  self.create_ngram_dict(normalize_sentence,
                                                            minus_n_dict)
-
+        # ddsda
         def get_model_dictionary(self):
             """Returns the dictionary class object
             """
