@@ -135,10 +135,7 @@ class Spell_Checker:
                                                               tuple2check[3]
 
             try:
-                error_value = self.get_value_error_table(org_word,
-                                                         change_word,
-                                                         action_type,
-                                                         edit_number,
+                error_value = self.get_value_error_table(action_type,
                                                          latters_change)
                 if error_value == 0: continue
                 mistake_prob = error_value / self.lm.spell_dict_char[tuple(latters_change)]
