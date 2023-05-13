@@ -5,7 +5,7 @@ from collections import Counter
 import numpy as np
 
 # suggestion_prob.apeend((alpha * sentence_prob))
-
+#
 
 class Spell_Checker:
     """The class implements a context sensitive spell checker. The corrections
