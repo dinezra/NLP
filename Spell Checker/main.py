@@ -1,4 +1,4 @@
-from Classes import Spell_Checker
+from Spell_Checker_Class import Spell_Checker
 from Data.spelling_confusion_matrices import error_tables
 
 path_data = '../Data/big.txt'

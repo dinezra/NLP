@@ -2,7 +2,12 @@ import pickle
 import pandas as pd
 import numpy as np
 import os,time, re, sys, random, math, collections, nltk
+
+from nltk import skipgrams
 from nltk.corpus import stopwords
+
+from word2vec.utils import *
+
 
 #static functions
 def who_am_i():  # this is not a class method
@@ -11,46 +16,6 @@ def who_am_i():  # this is not a class method
     """
     return {'name': 'Din Ezra', 'id': '206065989', 'email': 'ezradin@post.bgu.ac.il'}
 
-
-def normalize_text(fn):
-    """ Loading a text file and normalizing it, returning a list of sentences.
-
-    Args:
-        fn: full path to the text file to process
-    """
-    sentences = []
-
-    # Read the text file
-    with open(fn, 'r') as file:
-        text = file.read()
-
-    # Normalize the text
-    # Convert to lowercase
-    text = text.lower()
-    # Remove extra whitespaces
-    text = re.sub('\s+', ' ', text)
-    # Remove specific punctuation marks
-    text = re.sub(r'["“”.!?,]+', "", text)
-    # Split into sentences
-    sentences = re.split('[.!?]', text)
-    # Remove leading/trailing whitespaces from each sentence
-    sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
-
-    return sentences
-
-def sigmoid(x): return 1.0 / (1 + np.exp(-x))
-
-
-def load_model(fn):
-    """ Loads a model pickle and return it.
-
-    Args:
-        fn: the full path to the model to load.
-    """
-    with open(fn, 'rb') as file:
-        sg_model = pickle.load(file)
-
-    return sg_model
 
 class SkipGram:
     def __init__(self, sentences, d=100, neg_samples=4, context=4, word_count_threshold=5):
@@ -150,6 +115,51 @@ class SkipGram:
 
         return normalized_output
 
+    def prepare_training_examples(self):
+        """Prepares the training examples for the word2vec model.
+
+        Returns:
+            A list of tuples (target, context, label) representing the training examples.
+        """
+
+        # create learning vectors
+        training_examples  = []
+        for sentence in self.sentences:
+            dic = {}
+
+            # create positive and negative lists
+            positive_lst = list(skipgrams(sentence.split(), int(self.context / 2), 1))
+            positive_lst += [(tup[1], tup[0]) for tup in positive_lst]
+            negative_lst = []
+            for _ in range(self.neg_samples):
+                negative_lst += [
+                    (word, random.choice(list(self.word_counts.keys())))
+                    for word in sentence.split()
+                ]
+
+            pos = {}
+            for x, y in positive_lst:
+                if x not in self.word_counts or y not in self.word_counts:
+                    continue
+                pos.setdefault(x, []).append(y)
+            neg = {}
+            for x, y in negative_lst:
+                if x not in self.word_counts or y not in self.word_counts:
+                    continue
+                neg.setdefault(x, []).append(y)
+
+            # create the learning context vector
+            for key, val in pos.items():
+                context_vector = np.zeros(self.vocab_size, dtype=int)
+                for v in val:
+                    context_vector[self.word_index[v]] += 1
+                for v in neg[key]:
+                    context_vector[self.word_index[v]] -= 1
+                dic[key] = context_vector
+
+            training_examples += dic.items()
+        return  training_examples
+
     def learn_embeddings(self, step_size=0.001, epochs=50, early_stopping=3, model_path=None):
         """Returns a trained embedding models and saves it in the specified path
 
@@ -159,22 +169,60 @@ class SkipGram:
             early_stopping: stop training if the Loss was not improved for this number of epochs
             model_path: full path (including file name) to save the model pickle at.
         """
-
-
-        vocab_size = ... #todo: set to be the number of words in the model (how? how many, indeed?)
-        T = np.random.rand(self.d, vocab_size) # embedding matrix of target words
+        print('='*40+"Start Preprocessing"+'=')
+        vocab_size = len(self.word_index)
+        T = np.random.rand(self.d, vocab_size)  # embedding matrix of target words
         C = np.random.rand(vocab_size, self.d)  # embedding matrix of context words
 
-        #tips:
-        # 1. have a flag that allows printing to standard output so you can follow timing, loss change etc.
-        # 2. print progress indicators every N (hundreds? thousands? an epoch?) samples
-        # 3. save a temp model after every epoch
-        # 4.1 before you start - have the training examples ready - both positive and negative samples
-        # 4.2. it is recommended to train on word indices and not the strings themselves.
+        # Prepare training examples (positive and negative samples)
+        training_data = self.prepare_training_examples()
+        print('='*40+"Finish Preprocessing"+'=')
 
-        # TODO
+        best_loss = float('inf')
+        patience = early_stopping
+        print('='*40+"Start Training"+'=')
 
-        return T,C
+        for epoch in range(epochs):
+            total_loss = 0.0
+
+            # Training loop
+            for key, val  in training_data:
+                # Input layer x T = Hidden layer
+                input_layer_id = self.word_index[key]
+                input_layer = np.zeros(self.vocab_size, dtype=int)
+                input_layer[input_layer_id] = 1
+                input_layer = np.vstack(input_layer)
+
+                hidden = T[:, input_layer_id][:, None]
+
+                # Hidden layer x C = Output layer
+                output_layer = np.dot(C, hidden)
+                y = sigmoid(output_layer)
+
+                # calculate gradient
+                e = y - val.reshape(self.vocab_size, 1)
+                outer_grad = np.dot(hidden, e.T).T
+                inner_grad = np.dot(input_layer, np.dot(C.T, e).T).T
+                C -= step_size * outer_grad
+                T -= step_size * inner_grad
+
+                # backup the last trained model (the last epoch)
+            self.T = T
+            self.C = C
+            with open("temp.pickle", "wb") as f:
+                pickle.dump(self, f)
+
+            step_size *= 1 / (1 + step_size * i)
+        print("done training")
+
+        self.T = T
+        self.C = C
+
+        with open(model_path, "wb") as f:
+            pickle.dump(self, f)
+
+        return T, C
+
 
     def combine_vectors(self, T, C, combo=0, model_path=None):
         """Returns a single embedding matrix and saves it to the specified path
