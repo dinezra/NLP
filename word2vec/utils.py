@@ -12,24 +12,22 @@ def normalize_text(fn):
     """
     sentences = []
 
-    # Read the text file
-    with open(fn, 'r') as file:
-        text = file.read()
+    file = open(fn, "r", encoding="cp1252")
+    lines = file.readlines()
+    file.close()
 
-    # Normalize the text
-    # Convert to lowercase
-    text = text.lower()
-    # Remove extra whitespaces
-    text = re.sub('\s+', ' ', text)
-    # Remove specific punctuation marks
-    text = re.sub(r'["“”.!?,]+', "", text)
-    # Split into sentences
-    sentences = re.split('[.!?]', text)
-    # Remove leading/trailing whitespaces from each sentence
-    sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
+    for line in lines:
+        line = line.strip()
+
+        if not line:
+            continue
+
+        line = re.sub(r'["|“|”|,|!|?|.]+', "", line)
+        line = line.lower()
+
+        sentences.append(line)
 
     return sentences
-
 def sigmoid(x): return 1.0 / (1 + np.exp(-x))
 
 

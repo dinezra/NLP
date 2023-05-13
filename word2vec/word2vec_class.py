@@ -1,6 +1,8 @@
 import pickle
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
+
 import os,time, re, sys, random, math, collections, nltk
 
 from nltk import skipgrams
@@ -36,8 +38,8 @@ class SkipGram:
         :param sentences:
         :return:
         """
-        if not nltk.corpus.stopwords.words("english"):
-            nltk.download("stopwords", quiet=True)
+        try: nltk.corpus.stopwords.words("english")
+        except: nltk.download("stopwords", quiet=True)
 
         stop_word = set(stopwords.words("english"))
         words_conut = collections.Counter()
@@ -160,6 +162,7 @@ class SkipGram:
             training_examples += dic.items()
         return  training_examples
 
+
     def learn_embeddings(self, step_size=0.001, epochs=50, early_stopping=3, model_path=None):
         """Returns a trained embedding models and saves it in the specified path
 
@@ -169,24 +172,24 @@ class SkipGram:
             early_stopping: stop training if the Loss was not improved for this number of epochs
             model_path: full path (including file name) to save the model pickle at.
         """
-        print('='*40+"Start Preprocessing"+'=')
+        print('=' * 40 + " Start Preprocessing " + '=' * 41)
         vocab_size = len(self.word_index)
         T = np.random.rand(self.d, vocab_size)  # embedding matrix of target words
         C = np.random.rand(vocab_size, self.d)  # embedding matrix of context words
 
         # Prepare training examples (positive and negative samples)
         training_data = self.prepare_training_examples()
-        print('='*40+"Finish Preprocessing"+'=')
+        print('=' * 40 + " Finish Preprocessing " + '=' * 40)
 
         best_loss = float('inf')
         patience = early_stopping
-        print('='*40+"Start Training"+'=')
+        print('=' * 40 + " Start Training " + '=' * 46)
 
-        for epoch in range(epochs):
+        for epoch in tqdm(range(epochs), desc="Epochs", leave=True):
             total_loss = 0.0
 
             # Training loop
-            for key, val  in training_data:
+            for key, val in training_data:
                 # Input layer x T = Hidden layer
                 input_layer_id = self.word_index[key]
                 input_layer = np.zeros(self.vocab_size, dtype=int)
@@ -195,7 +198,6 @@ class SkipGram:
 
                 hidden = T[:, input_layer_id][:, None]
 
-                # Hidden layer x C = Output layer
                 output_layer = np.dot(C, hidden)
                 y = sigmoid(output_layer)
 
@@ -206,21 +208,40 @@ class SkipGram:
                 C -= step_size * outer_grad
                 T -= step_size * inner_grad
 
-                # backup the last trained model (the last epoch)
+                # calculate loss
+                loss = np.sum(e ** 2)
+                total_loss += loss
+
+            avg_loss = total_loss / len(training_data)
+            print(f"Epoch {epoch + 1}/{epochs}: Loss = {avg_loss:.4f}")
+
+            # Early stopping
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                patience = early_stopping
+            else:
+                patience -= 1
+                if patience == 0:
+                    print(f"Training stopped early. Loss did not improve for {early_stopping} epochs.")
+                    break
+
+            # Backup the last trained model (the last epoch)
             self.T = T
             self.C = C
-            with open("temp.pickle", "wb") as f:
+            with open(os.path.join(model_path, f"temp_model_epoch_{epoch + 1}.pickle"), "wb") as f:
                 pickle.dump(self, f)
 
-            step_size *= 1 / (1 + step_size * i)
-        print("done training")
+            step_size *= 1 / (1 + step_size * epoch)
+
+        print("\nTraining completed.")
 
         self.T = T
         self.C = C
 
-        with open(model_path, "wb") as f:
+        with open(os.path.join(model_path, 'final_model.pickle'), "wb") as f:
             pickle.dump(self, f)
 
+        print(f"\nModel save to {model_path} as final_model.pickle")
         return T, C
 
 
@@ -239,8 +260,26 @@ class SkipGram:
             model_path: full path (including file name) to save the model pickle at.
         """
 
-        # TODO
+        if combo == 0:
+            V = T
+        elif combo == 1:
+            V = C
+        elif combo == 2:
+            V = (C + T) / 2
+        elif combo == 3:
+            V = C + T
+        elif combo == 4:
+            V = np.concatenate((C, T), axis=1)
+        else:
+            raise ValueError("Invalid combo value. Must be 0, 1, 2, 3, or 4.")
 
+            # Save the combined embedding matrix
+        if model_path is not None:
+            with open(model_path, "wb") as f:
+                pickle.dump(V, f)
+        else:
+            # Handle the case when model_path is None
+            print("Warning: model_path is not provided. The combined embeddings will not be saved.")
         return V
 
     def find_analogy(self, w1,w2,w3):
