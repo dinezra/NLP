@@ -2,7 +2,7 @@ import pickle
 import pandas as pd
 import numpy as np
 import os,time, re, sys, random, math, collections, nltk
-
+from nltk.corpus import stopwords
 
 #static functions
 def who_am_i():  # this is not a class method
@@ -61,18 +61,37 @@ class SkipGram:
         self.word_count_threshold = word_count_threshold #ignore low frequency words (appearing under the threshold)
         self.T = []  # embedding matrix
         self.C = []  # embedding matrix
-        self.word_counts = self._word_count()
-
-        # Tips:
-        # 1. It is recommended to create a word:count dictionary
-        # 2. It is recommended to create a word-index map
-
+        self.word_counts = self._word_count(sentences)
+        self.word_index = self._word_index()
+        self.vocab_size = len(self.word_counts)
 
     def _word_count(self,sentences):
+        """
+
+        :param sentences:
+        :return:
+        """
+        if not nltk.corpus.stopwords.words("english"):
+            nltk.download("stopwords", quiet=True)
+
+        stop_word = set(stopwords.words("english"))
         words_conut = collections.Counter()
         for sentence in sentences:
-            words_conut.update(sentence.split())
+            for word in sentence.split():
+                if word not in stop_word: words_conut.update(word)
         return dict(words_conut)
+
+    def _word_index(self):
+        """
+
+        :return:
+        """
+        word_index = {}
+        for index,word in enumerate(self.word_counts.keys()):
+            word_index[word]=index
+        return word_index
+    def get_emb(self,w):
+        return self.T[:, self.word_index[w]]
 
     def compute_similarity(self, w1, w2):
         """ Returns the cosine similarity (in [0,1]) between the specified words.
@@ -83,18 +102,53 @@ class SkipGram:
         Retunrns: a float in [0,1]; defaults to 0.0 if one of specified words is OOV.
     """
         sim  = 0.0 # default
-        #TODO
+        # Check if both words are present in the Word2Vec model's vocabulary
+        if w1 in self.word_counts and w2 in self.word_counts:
+            # Get the word embeddings for w1 and w2
+            emb1 = self.get_emb(w1)
+            emb2 = self.get_emb(w2)
+
+            # Compute the cosine similarity
+            sim = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
 
         return sim # default
 
-    def get_closest_words(self, w, n=5):
+    def get_closest_words(self, word, n=5):
         """Returns a list containing the n words that are the closest to the specified word.
 
         Args:
-            w: the word to find close words to.
+            word: the word to find close words to.
             n: the number of words to return. Defaults to 5.
         """
 
+        if word not in self.word_index:
+            return []  # default
+
+        output_layer = self.feed_forward(word)
+        n = min(n, self.vocab_size)
+
+        candidates = []
+        for candidate_word, index in self.word_index.items():
+            candidates.append((candidate_word, output_layer[index]))
+
+        candidates = sorted(candidates, key=lambda x: x[1], reverse=True)
+        closest_words = [word for word, score in candidates]
+        return closest_words[:n]
+
+    def feed_forward(self, word):
+        """Returns a normalized output layer for a word
+
+        Args:
+            word: word to get output for
+        """
+
+        input_layer_id = self.word_index[word]
+        hidden_layer = self.T[:, input_layer_id][:, None]
+
+        output_layer = np.dot(self.C, hidden_layer)
+        normalized_output = sigmoid(output_layer)
+
+        return normalized_output
 
     def learn_embeddings(self, step_size=0.001, epochs=50, early_stopping=3, model_path=None):
         """Returns a trained embedding models and saves it in the specified path
