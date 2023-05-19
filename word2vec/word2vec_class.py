@@ -246,6 +246,9 @@ class SkipGram:
         self.T = T
         self.C = C
 
+        if not os.path.exists(model_path):
+            os.makedirs(model_path)
+
         with open(os.path.join(model_path, 'final_model.pickle'), "wb") as f:
             pickle.dump(self, f)
 
