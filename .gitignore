@@ -1,1 +1,6 @@
+__pycache__/
+*.py[cod]
+
 /venv/
+/word2vec/models/
+/word2vec/tests/

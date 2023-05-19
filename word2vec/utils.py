@@ -24,9 +24,10 @@ def normalize_text(fn):
 
         line = re.sub(r'["|“|”|,|!|?|.]+', "", line)
         line = line.lower()
-
-        sentences.append(line)
-
+        try:
+            sentences.append(line.split())
+        except:
+            continue
     return sentences
 def sigmoid(x): return 1.0 / (1 + np.exp(-x))
 
@@ -41,3 +42,16 @@ def load_model(fn):
         sg_model = pickle.load(file)
 
     return sg_model
+
+def _load_model(model_path):
+    """Loads a trained word2vec model from the specified file.
+
+    Args:
+        model_path: The path to the model file.
+
+    Returns:
+        The loaded word2vec model.
+    """
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+    return model

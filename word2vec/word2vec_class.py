@@ -21,6 +21,7 @@ def who_am_i():  # this is not a class method
 
 class SkipGram:
     def __init__(self, sentences, d=100, neg_samples=4, context=4, word_count_threshold=5):
+        self.V = None
         self.sentences = sentences
         self.d = d  # embedding dimension
         self.neg_samples = neg_samples  # num of negative samples for one positive sample
@@ -44,9 +45,12 @@ class SkipGram:
         stop_word = set(stopwords.words("english"))
         words_conut = collections.Counter()
         for sentence in sentences:
-            for word in sentence.split():
-                if word not in stop_word: words_conut.update(word)
-        return dict(words_conut)
+            words_conut.update(sentence)
+        word_count_non_stop = {}
+        for word, count in words_conut.items():
+            if word not in stop_word:
+                word_count_non_stop[word] = count
+        return word_count_non_stop
 
     def _word_index(self):
         """
@@ -58,7 +62,7 @@ class SkipGram:
             word_index[word]=index
         return word_index
     def get_emb(self,w):
-        return self.T[:, self.word_index[w]]
+        return self.V[self.word_index[w]]
 
     def compute_similarity(self, w1, w2):
         """ Returns the cosine similarity (in [0,1]) between the specified words.
@@ -74,9 +78,11 @@ class SkipGram:
             # Get the word embeddings for w1 and w2
             emb1 = self.get_emb(w1)
             emb2 = self.get_emb(w2)
-
+            mone=np.dot(emb1, emb2)
             # Compute the cosine similarity
-            sim = np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2))
+            if np.all(emb1 == 0):
+                return 0
+            sim = mone/ (np.linalg.norm(emb1) * np.linalg.norm(emb2))
 
         return sim # default
 
@@ -110,9 +116,9 @@ class SkipGram:
         """
 
         input_layer_id = self.word_index[word]
-        hidden_layer = self.T[:, input_layer_id][:, None]
+        hidden_layer = self.V[input_layer_id][:, None]
 
-        output_layer = np.dot(self.C, hidden_layer)
+        output_layer = np.dot(hidden_layer, np.array(self.C ))
         normalized_output = sigmoid(output_layer)
 
         return normalized_output
@@ -172,6 +178,8 @@ class SkipGram:
             early_stopping: stop training if the Loss was not improved for this number of epochs
             model_path: full path (including file name) to save the model pickle at.
         """
+        model_path = '../models'
+
         print('=' * 40 + " Start Preprocessing " + '=' * 41)
         vocab_size = len(self.word_index)
         T = np.random.rand(self.d, vocab_size)  # embedding matrix of target words
@@ -213,7 +221,7 @@ class SkipGram:
                 total_loss += loss
 
             avg_loss = total_loss / len(training_data)
-            print(f"Epoch {epoch + 1}/{epochs}: Loss = {avg_loss:.4f}")
+            tqdm.write(f" Epoch {epoch}/{epochs}: Loss = {avg_loss:.4f}")
 
             # Early stopping
             if avg_loss < best_loss:
@@ -228,8 +236,8 @@ class SkipGram:
             # Backup the last trained model (the last epoch)
             self.T = T
             self.C = C
-            with open(os.path.join(model_path, f"temp_model_epoch_{epoch + 1}.pickle"), "wb") as f:
-                pickle.dump(self, f)
+            # with open(os.path.join(model_path, f"temp_model_epoch_{epoch + 1}.pickle"), "wb") as f:
+            #     pickle.dump(self, f)
 
             step_size *= 1 / (1 + step_size * epoch)
 
@@ -241,7 +249,8 @@ class SkipGram:
         with open(os.path.join(model_path, 'final_model.pickle'), "wb") as f:
             pickle.dump(self, f)
 
-        print(f"\nModel save to {model_path} as final_model.pickle")
+        print(f"\nModel save to {model_path} as final_model.pickle\n")
+        self.V = T
         return T, C
 
 
@@ -265,11 +274,11 @@ class SkipGram:
         elif combo == 1:
             V = C
         elif combo == 2:
-            V = (C + T) / 2
+            V = (T.T + C) / 2
         elif combo == 3:
-            V = C + T
+            V = T.T + C
         elif combo == 4:
-            V = np.concatenate((C, T), axis=1)
+            V = np.concatenate((T.T,C), axis=1)
         else:
             raise ValueError("Invalid combo value. Must be 0, 1, 2, 3, or 4.")
 
@@ -277,12 +286,15 @@ class SkipGram:
         if model_path is not None:
             with open(model_path, "wb") as f:
                 pickle.dump(V, f)
+                print(f"Vectors save to {model_path} \n")
+
         else:
             # Handle the case when model_path is None
             print("Warning: model_path is not provided. The combined embeddings will not be saved.")
+        self.V = V
         return V
 
-    def find_analogy(self, w1,w2,w3):
+    def find_analogy(self, w1, w2, w3):
         """Returns a word (string) that matches the analogy test given the three specified words.
            Required analogy: w1 to w2 is like ____ to w3.
 
@@ -292,8 +304,27 @@ class SkipGram:
              w3: third word in the analogy (string)
         """
 
-        #TODO
+        if w1 not in self.word_index or w2 not in self.word_index or w3 not in self.word_index:
+            return []  # One or more words are not in the vocabulary
 
+        # Get the word indices from the word_index
+        w1_idx = self.word_index[w1]
+        w2_idx = self.word_index[w2]
+        w3_idx = self.word_index[w3]
+
+        # Get the corresponding word embeddings from the embedding matrix
+        w1_embedding = self.V[w1_idx]
+        w2_embedding = self.V[w2_idx]
+        w3_embedding = self.V[w3_idx]
+
+        v_diff = w2_embedding - w1_embedding
+        analogy_embedding = v_diff + w3_embedding
+
+        # Find the closest word to the analogy embedding
+        closest_word_idx = np.argmax(np.dot(self.V, analogy_embedding))
+
+        # Retrieve the word from the word_index
+        w = list(self.word_index.keys())[list(self.word_index.values()).index(closest_word_idx)]
         return w
 
     def test_analogy(self, w1, w2, w3, w4, n=1):
@@ -309,6 +340,17 @@ class SkipGram:
              n: the distance (work rank) to be accepted as similarity
             """
 
-        # TODO
+        if w1 not in self.word_index or w2 not in self.word_index or w3 not in self.word_index or w4 not in self.word_index:
+            return False
 
-        return False
+        # Calculate the vector representation of the analogy
+        v1 = self.V[self.word_index[w1]]
+        v2 = self.V[:, self.word_index[w2]]
+        v3 = self.V[ self.word_index[w3]]
+        analogy_vector = v1 - v2 + v3
+
+        # Get the n closest words to the analogy vector
+        closest_words = self.get_closest_words(analogy_vector, n=n)
+
+        return w4 in closest_words
+
