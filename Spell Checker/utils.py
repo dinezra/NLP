@@ -16,4 +16,5 @@ def normalize_text(text):
 
     text = text.replace("'s", "")
     text = text.strip()
-    return text
+    return text  
+  
